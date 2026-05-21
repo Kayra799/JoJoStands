@@ -21,6 +21,8 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         // Trap
         protected override int MaxFloorCeilingTraps => 8;
 
+        private int ctrlDropActive = 0;
+
         public override void AI()
         {
             SelectAnimation();
@@ -50,13 +52,23 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             {
                 if (Projectile.owner == Main.myPlayer)
                 {
-                    if (PlayerLeftClick() && shootCount <= 0)
+                    bool leftPressed = PlayerLeftClick();
+                    bool rightPressed = Main.mouseRight;
+
+                    if (leftPressed && shootCount <= 0 && !HasActiveControlledControllableDrop())
                     {
                         currentAnimationState = AnimationState.Idle;
                         FireThreeStreams(mPlayer);
                         shootCount += newShootTime;
                     }
                     else currentAnimationState = AnimationState.Idle;
+
+                    if (rightPressed && ctrlDropActive == 0 && !leftPressed)
+                    {
+                        FireControllableDrop(mPlayer);
+                        ctrlDropActive = 1;
+                    }
+                    if (!rightPressed) ctrlDropActive = 0;
                 }
             }
 

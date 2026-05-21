@@ -38,7 +38,23 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected virtual int TRAP_SPAWN_TICKS => 0;
         protected virtual int TRAP_BASE_TICKS => 0;
         protected virtual int TRAP_MAX_TICKS => 0;
+        protected const float CONTROLABLE_RANGE = 260f;
         protected const int MAX_TRAP_AREAS = 3;
+
+        public override float MaxAltDistance => HasActiveControlledControllableDrop()
+            ? Math.Max(0f, CONTROLABLE_RANGE - Main.player[Projectile.owner].GetModPlayer<MyPlayer>().standRangeBoosts)
+            : 0f;
+
+        protected bool HasActiveControlledControllableDrop()
+        {
+            for (int i = 0; i < Main.maxProjectiles; i++)
+            {
+                Projectile proj = Main.projectile[i];
+                if (proj.active && proj.owner == Projectile.owner && proj.type == ModContent.ProjectileType<ControllableRainDrop>() && proj.ai[0] < 1f)
+                    return true;
+            }
+            return false;
+        }
 
         protected const int CEIL_TOTAL_FRAMES = 15;
         protected const int CEIL_FRAME_HEIGHT = 20;
@@ -1075,31 +1091,6 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
                     col, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0);
             }
             catch { }
-        }
-
-        public override void PostDraw(Color lightColor)
-        {
-            if (Main.netMode == 2) return;
-            if (Projectile.owner != Main.myPlayer) return;
-            if (!Main.mouseRight) return;
-
-            Player p = Main.player[Projectile.owner];
-            if (p == null || !p.active || p.dead) return;
-
-            Texture2D px = Terraria.GameContent.TextureAssets.MagicPixel.Value;
-            Vector2 center = p.Center - Main.screenPosition;
-            float alpha = global::JoJoStands.JoJoStands.RangeIndicators
-                ? global::JoJoStands.JoJoStands.RangeIndicatorAlpha
-                : 0.55f;
-            const float CTRL = 260f;
-            Color ctrlCol = new Color(120, 200, 255) * alpha;
-            int points = 720;
-            for (int i = 0; i < points; i++)
-            {
-                float a = (i / (float)points) * MathHelper.TwoPi;
-                Vector2 pos = center + new Vector2((float)Math.Cos(a) * CTRL, (float)Math.Sin(a) * CTRL);
-                Main.EntitySpriteDraw(px, pos, new Rectangle(0, 0, 1, 1), ctrlCol, 0f, new Vector2(0.5f, 0.5f), 3f, SpriteEffects.None, 0);
-            }
         }
 
         public override void SelectAnimation()

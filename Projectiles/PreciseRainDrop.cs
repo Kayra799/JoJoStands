@@ -30,12 +30,11 @@ namespace JoJoStands.Projectiles
 
         public override void SetDefaults()
         {
-            Projectile.width                = 6;
+            Projectile.width                 = 6;
             Projectile.height                = 14;
             Projectile.friendly              = true;
             Projectile.hostile               = false;
-            Projectile.DamageType   = DamageClass.Generic;
-            Projectile.penetrate             = -1;
+            Projectile.penetrate             = -2;
             Projectile.timeLeft              = 200;
             Projectile.ignoreWater           = true;
             Projectile.tileCollide           = false;

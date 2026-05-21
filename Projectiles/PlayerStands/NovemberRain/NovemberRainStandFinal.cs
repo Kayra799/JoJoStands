@@ -1,4 +1,5 @@
 using JoJoStands.Buffs.Debuffs;
+using JoJoStands.Buffs.EffectBuff;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
@@ -181,7 +182,10 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             {
                 if (Projectile.owner == Main.myPlayer)
                 {
-                    if (PlayerLeftClick() && shootCount <= 0)
+                    bool leftPressed = PlayerLeftClick();
+                    bool rightPressed = Main.mouseRight;
+
+                    if (leftPressed && shootCount <= 0 && !HasActiveControlledControllableDrop())
                     {
                         currentAnimationState = AnimationState.Idle;
                         FireThreeStreams(mPlayer);
@@ -189,8 +193,12 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
                     }
                     else currentAnimationState = AnimationState.Idle;
 
-                    if (Main.mouseRight && ctrlDropActive == 0 && canUseRain) { FireControllableDrop(mPlayer); ctrlDropActive = 1; }
-                    if (!Main.mouseRight) ctrlDropActive = 0;
+                    if (rightPressed && ctrlDropActive == 0 && canUseRain && !leftPressed)
+                    {
+                        FireControllableDrop(mPlayer);
+                        ctrlDropActive = 1;
+                    }
+                    if (!rightPressed) ctrlDropActive = 0;
 
                     if (SpecialKeyPressed() && !barrierActive && !hasBarrierCD && !maelActive)
                     {

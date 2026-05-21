@@ -141,9 +141,9 @@ namespace JoJoStands
                 ProjectileType<TrackerBubble>(),
                 ProjectileType<Projectiles.PlayerStands.Cream.Void>(),
                 ProjectileType<DashVoid>(),
-                ProjectileType<PurpleHazeCapsule>(),
+                ProjectileType<ControllableRainDrop>(),
                 ProjectileType<PreciseRainDrop>(),
-                ProjectileType<ControllableRainDrop>()
+                ProjectileType<PurpleHazeCapsule>()
             };
 
             standTier1List = new List<int>

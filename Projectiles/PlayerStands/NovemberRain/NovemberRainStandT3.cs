@@ -1,4 +1,5 @@
 using JoJoStands.Buffs.Debuffs;
+using JoJoStands.Buffs.EffectBuff;
 using Microsoft.Xna.Framework;
 using Terraria;
 using Terraria.ModLoader;
@@ -61,6 +62,11 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
                     player.AddBuff(ModContent.BuffType<AbilityCooldown>(), mPlayer.AbilityCooldownTime(BARRIER_CD_SECS));
                     Projectile.netUpdate = true;
                 }
+                else
+                {
+                    int bRemaining = BARRIER_DURATION - barrierTimer;
+                    if (bRemaining > 0) player.AddBuff(ModContent.BuffType<RainBarrierActive>(), bRemaining);
+                }
             }
 
             if (mPlayer.standControlStyle == MyPlayer.StandControlStyle.Auto)
@@ -74,7 +80,10 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             {
                 if (Projectile.owner == Main.myPlayer)
                 {
-                    if (PlayerLeftClick() && shootCount <= 0)
+                    bool leftPressed = PlayerLeftClick();
+                    bool rightPressed = Main.mouseRight;
+
+                    if (leftPressed && shootCount <= 0 && !HasActiveControlledControllableDrop())
                     {
                         currentAnimationState = AnimationState.Idle;
                         FireThreeStreams(mPlayer);
@@ -82,12 +91,12 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
                     }
                     else currentAnimationState = AnimationState.Idle;
 
-                    if (Main.mouseRight && ctrlDropActive == 0)
+                    if (rightPressed && ctrlDropActive == 0 && !leftPressed)
                     {
                         FireControllableDrop(mPlayer);
                         ctrlDropActive = 1;
                     }
-                    if (!Main.mouseRight) ctrlDropActive = 0;
+                    if (!rightPressed) ctrlDropActive = 0;
 
                     if (SpecialKeyPressed() && !barrierActive && !player.HasBuff(ModContent.BuffType<AbilityCooldown>()))
                     {

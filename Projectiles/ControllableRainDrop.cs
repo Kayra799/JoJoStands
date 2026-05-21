@@ -12,7 +12,8 @@ namespace JoJoStands.Projectiles
     {
         public override string Texture => "JoJoStands/Projectiles/ControllableRainDrop";
 
-        private const int   SPAWN_GROW_FRAMES = 30;
+        private const int   DEFAULT_SPAWN_GROW_FRAMES = 30;
+        private int spawnGrowFrames = DEFAULT_SPAWN_GROW_FRAMES;
 
         private const float APEX_HORIZ_OFFSET = 28f;
         private const float APEX_VERT_OFFSET  = 55f;
@@ -47,13 +48,20 @@ namespace JoJoStands.Projectiles
         private bool    wasMouseRight     = false;
         private int     spawnTimer        = 0;
 
+        private int GetSpawnGrowFrames(int standType)
+        {
+            if (standType == ModContent.ProjectileType<NovemberRainStandT2>()) return 34;
+            if (standType == ModContent.ProjectileType<NovemberRainStandT3>()) return 28;
+            if (standType == ModContent.ProjectileType<NovemberRainStandFinal>()) return 22;
+            return DEFAULT_SPAWN_GROW_FRAMES;
+        }
+
         public override void SetDefaults()
         {
             Projectile.width        = 14;
             Projectile.height       = 6;
             Projectile.friendly     = true;
             Projectile.hostile      = false;
-            Projectile.DamageType   = DamageClass.Generic;
             Projectile.penetrate    = 3;
             Projectile.timeLeft     = 600;
             Projectile.ignoreWater  = true;
@@ -116,6 +124,7 @@ namespace JoJoStands.Projectiles
                         dirSign = sp.spriteDirection;
                         Projectile.spriteDirection = sp.spriteDirection;
                         Projectile.direction = sp.spriteDirection;
+                        spawnGrowFrames = GetSpawnGrowFrames(sp.type);
                         break;
                     }
                 }
@@ -146,7 +155,7 @@ namespace JoJoStands.Projectiles
                 }
             }
 
-            if (spawnTimer < SPAWN_GROW_FRAMES)
+            if (spawnTimer < spawnGrowFrames)
             {
                 spawnTimer++;
 
@@ -174,7 +183,7 @@ namespace JoJoStands.Projectiles
                     standPos2.X + DROP_X_OFFSET * dirSign2,
                     standPos2.Y + DROP_Y_OFFSET);
 
-                Projectile.Center  = spawnPos;
+                Projectile.Center = spawnPos;
                 Projectile.velocity = Vector2.Zero;
 
                 if (Main.rand.NextBool(3))
@@ -248,12 +257,22 @@ namespace JoJoStands.Projectiles
                                 if (along > speedCap) along = speedCap;
                                 if (along < -TRACK_MAX_SPEED * 0.4f) along = -TRACK_MAX_SPEED * 0.4f;
 
-                                if (along > 0f && along > dist - 1f)
-                                    along = Math.Max(0f, dist - 1f);
+                                if (along > 0f && along > dist)
+                                    along = dist;
 
                                 side *= 0.75f;
 
-                                Projectile.velocity = dir * along + perp * side;
+                                Vector2 newVelocity = dir * along + perp * side;
+                                Vector2 nextPos = Projectile.Center + newVelocity;
+                                if (Vector2.Dot(cursorTarget - Projectile.Center, cursorTarget - nextPos) <= 0f)
+                                {
+                                    Projectile.Center = cursorTarget;
+                                    Projectile.velocity = Vector2.Zero;
+                                }
+                                else
+                                {
+                                    Projectile.velocity = newVelocity;
+                                }
                             }
                             else
                             {
@@ -389,9 +408,9 @@ namespace JoJoStands.Projectiles
             Vector2   origin = new Vector2(tex.Width * 0.5f, tex.Height * 0.5f);
             Vector2   pos    = Projectile.Center - Main.screenPosition;
 
-            if (spawnTimer < SPAWN_GROW_FRAMES)
+            if (spawnTimer < spawnGrowFrames)
             {
-                float t     = (float)spawnTimer / SPAWN_GROW_FRAMES;
+                float t     = (float)spawnTimer / spawnGrowFrames;
                 float scale = 1f - (1f - t) * (1f - t);
                 Main.EntitySpriteDraw(tex, pos, null, lightColor * t, Projectile.rotation,
                     origin, scale, SpriteEffects.None, 0);
