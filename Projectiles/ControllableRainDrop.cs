@@ -47,6 +47,8 @@ namespace JoJoStands.Projectiles
         private bool    firstFrame        = true;
         private bool    wasMouseRight     = false;
         private int     spawnTimer        = 0;
+        private bool    inWallPhase       = false;
+        private Vector2 prevCenter        = Vector2.Zero;
 
         private int GetSpawnGrowFrames(int standType)
         {
@@ -102,7 +104,8 @@ namespace JoJoStands.Projectiles
 
         public override void AI()
         {
-            Player player = Main.player[Projectile.owner];
+            Player  player           = Main.player[Projectile.owner];
+            Vector2 frameStartCenter = Projectile.Center;
 
             if (firstFrame)
             {
@@ -197,7 +200,33 @@ namespace JoJoStands.Projectiles
 
                 if (Projectile.owner == Main.myPlayer)
                     wasMouseRight = Main.mouseRight;
+                if (spawnTimer == spawnGrowFrames)
+                {
+                    inWallPhase = IsTrueSolid((int)(Projectile.Center.X / 16f), (int)(Projectile.Center.Y / 16f));
+                    prevCenter  = Projectile.Center;
+                }
                 return;
+            }
+
+            if (inWallPhase)
+            {
+                Vector2 wpDelta = frameStartCenter - prevCenter;
+                float   wpDist  = wpDelta.Length();
+                if (wpDist > 0.5f)
+                {
+                    Vector2 wpDir = wpDelta / wpDist;
+                    bool    wpAir = false;
+                    for (float t = 0f; t <= wpDist; t += 2f)
+                    {
+                        bool solid = IsTrueSolid(
+                            (int)((prevCenter.X + wpDir.X * t) / 16f),
+                            (int)((prevCenter.Y + wpDir.Y * t) / 16f));
+                        if (!wpAir && !solid) wpAir = true;
+                        else if (wpAir && solid) { SplashDust(); Projectile.Kill(); return; }
+                    }
+                }
+                if (!IsTrueSolid((int)(frameStartCenter.X / 16f), (int)(frameStartCenter.Y / 16f)))
+                    inWallPhase = false;
             }
 
             if (Projectile.owner == Main.myPlayer && Projectile.ai[0] < 1f)
@@ -343,7 +372,7 @@ namespace JoJoStands.Projectiles
                 if (Projectile.velocity.Y > 13f) Projectile.velocity.Y = 13f;
             }
 
-            if (Projectile.owner == Main.myPlayer && !released && Main.mouseRight)
+            if (!inWallPhase && Projectile.owner == Main.myPlayer && !released && Main.mouseRight)
             {
                 Vector2 cursorPos = Main.MouseWorld + new Vector2(0f, CURSOR_TIP_Y_OFFSET);
                 int cursorTileX = (int)(cursorPos.X / 16f);
@@ -377,7 +406,7 @@ namespace JoJoStands.Projectiles
                 }
             }
 
-            if (HitsSolidTile())
+            if (!inWallPhase && HitsSolidTile())
             {
                 SplashDust();
                 Projectile.Kill();
@@ -400,6 +429,7 @@ namespace JoJoStands.Projectiles
                 Main.dust[d].noGravity = true;
             }
             Lighting.AddLight(Projectile.Center, 0.0f, 0.1f, 0.2f);
+            prevCenter = frameStartCenter;
         }
 
         public override bool PreDraw(ref Color lightColor)

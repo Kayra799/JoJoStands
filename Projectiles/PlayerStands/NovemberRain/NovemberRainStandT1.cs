@@ -136,29 +136,6 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         private void HitNPCWithAccessories(Player player, MyPlayer mPlayer, NPC npc, int baseDmg, int direction)
         {
             bool crit = Main.rand.Next(100) < player.GetTotalCritChance<MeleeDamageClass>();
-            if (mPlayer.underbossPhoneEquipped)
-            {
-                mPlayer.underbossPhoneCount++;
-                if (mPlayer.underbossPhoneCount >= 5)
-                {
-                    mPlayer.underbossPhoneCount = 0;
-                    int bonusDmg = (int)(baseDmg * 11.1f);
-                    player.ApplyDamageToNPC(npc, bonusDmg, 0f, direction, true, DamageClass.Generic);
-                    for (int d = 0; d < 6; d++)
-                        Dust.NewDust(npc.position, npc.width, npc.height, DustID.TreasureSparkle, 0f, -2f, 0, default, 1.2f);
-                    return;
-                }
-            }
-            if (mPlayer.iceCreamEquipped)
-            {
-                mPlayer.iceCreamEnemyHitCount++;
-                if (mPlayer.iceCreamEnemyHitCount >= 8)
-                {
-                    mPlayer.iceCreamEnemyHitCount = 0;
-                    crit = true;
-                    baseDmg += npc.defense;
-                }
-            }
             player.ApplyDamageToNPC(npc, baseDmg, 0.8f, direction, crit, DamageClass.Generic);
         }
 

@@ -22,6 +22,20 @@ namespace JoJoStands.Projectiles
         private Vector2 fadeStopDir    = Vector2.UnitY;
         private const int FadeFrames = 8;
 
+        private bool    inWallPhase = false;
+        private Vector2 prevCenter  = Vector2.Zero;
+
+        private struct WallSpark
+        {
+            public Vector2 pos;
+            public Vector2 vel;
+            public float   scale;
+            public float   rot;
+            public int     life;
+            public int     maxLife;
+        }
+        private System.Collections.Generic.List<WallSpark> wallSparks = new System.Collections.Generic.List<WallSpark>();
+
         public override void SetStaticDefaults()
         {
             ProjectileID.Sets.TrailCacheLength[Projectile.type] = 40;
@@ -60,11 +74,25 @@ namespace JoJoStands.Projectiles
 
         public override void AI()
         {
+            Vector2 frameStartCenter = Projectile.Center;
+
+            for (int i = wallSparks.Count - 1; i >= 0; i--)
+            {
+                WallSpark s = wallSparks[i];
+                s.pos  += s.vel;
+                s.vel  *= 0.92f;
+                s.life -= 1;
+                if (s.life <= 0) wallSparks.RemoveAt(i);
+                else             wallSparks[i] = s;
+            }
+
             if (firstFrame)
             {
-                firstFrame = false;
+                firstFrame  = false;
                 if (TryGetAnchor(out Vector2 a0)) lastAnchorPos = a0;
                 else                              lastAnchorPos = Projectile.Center;
+                inWallPhase = HitboxInSolidAt(Projectile.position);
+                prevCenter  = Projectile.Center;
             }
             else if (!fading && TryGetAnchor(out Vector2 anchorNow))
             {
@@ -82,6 +110,44 @@ namespace JoJoStands.Projectiles
                 lastAnchorPos = anchorNow;
             }
 
+            if (inWallPhase)
+            {
+                Vector2 wpDelta = frameStartCenter - prevCenter;
+                float   wpDist  = wpDelta.Length();
+                if (wpDist > 0.5f)
+                {
+                    Vector2 wpDir = wpDelta / wpDist;
+                    bool    wpAir = false;
+                    for (float t = 0f; t <= wpDist; t += 2f)
+                    {
+                        bool solid = PointInSolid(prevCenter + wpDir * t);
+                        if (!wpAir && !solid) wpAir = true;
+                        else if (wpAir && solid)
+                        {
+                            StartFading(t >= 2f ? prevCenter + wpDir * (t - 2f) : prevCenter, fromNpc: false);
+                            prevCenter = frameStartCenter;
+                            return;
+                        }
+                    }
+                }
+                if (!HitboxInSolidAt(Projectile.position))
+                    inWallPhase = false;
+                else
+                {
+                    for (int i = 0; i < 2; i++)
+                    {
+                        WallSpark s = new WallSpark();
+                        s.pos     = Projectile.Center + new Vector2(Main.rand.NextFloat(-3f, 3f), Main.rand.NextFloat(-7f, 7f));
+                        s.vel     = new Vector2(Main.rand.NextFloat(-0.5f, 0.5f), Main.rand.NextFloat(-0.5f, 0.5f));
+                        s.scale   = Main.rand.NextFloat(0.18f, 0.30f);
+                        s.rot     = Main.rand.NextFloat(MathHelper.TwoPi);
+                        s.maxLife = Main.rand.Next(14, 22);
+                        s.life    = s.maxLife;
+                        wallSparks.Add(s);
+                    }
+                }
+            }
+
             if (fading)
             {
                 Projectile.velocity *= 0.55f;
@@ -93,6 +159,7 @@ namespace JoJoStands.Projectiles
                 }
                 float lf = 1f - fadeAge / (float)FadeFrames;
                 Lighting.AddLight(fadeStopCenter, 0.05f * lf, 0.10f * lf, 0.18f * lf);
+                prevCenter = frameStartCenter;
                 return;
             }
 
@@ -100,9 +167,9 @@ namespace JoJoStands.Projectiles
             if (Projectile.velocity.Y > 45f) Projectile.velocity.Y = 45f;
             Projectile.rotation = Projectile.velocity.ToRotation() + MathHelper.PiOver2;
 
-            if (HitboxInSolidAt(Projectile.position) || ScanPathHitsSolid())
+            if (!inWallPhase && (HitboxInSolidAt(Projectile.position) || ScanPathHitsSolid()))
             {
-                StartFading(fromNpc: false);
+                StartFading(Projectile.Center, fromNpc: false);
                 return;
             }
 
@@ -115,20 +182,22 @@ namespace JoJoStands.Projectiles
                 Main.dust[d].velocity *= 0.25f;
             }
             Lighting.AddLight(Projectile.Center, 0.05f, 0.10f, 0.18f);
+            prevCenter = frameStartCenter;
         }
 
-        private void StartFading(bool fromNpc)
+        private void StartFading(Vector2 fadeCenter, bool fromNpc)
         {
             if (fading) return;
             fading              = true;
             fadingFromNpc       = fromNpc;
             fadeAge             = 0;
-            fadeStopCenter      = Projectile.Center;
+            fadeStopCenter      = fadeCenter;
             Vector2 v = Projectile.velocity;
             float vl = v.Length();
             fadeStopDir         = vl > 0.01f ? v / vl : Vector2.UnitY;
             Projectile.friendly = false;
             Projectile.damage   = 0;
+            if (!fromNpc) Projectile.velocity = Vector2.Zero;
         }
 
         private bool HitboxInSolidAt(Vector2 topLeft)
@@ -214,7 +283,7 @@ namespace JoJoStands.Projectiles
 
         public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)
         {
-            if (!fading) StartFading(fromNpc: true);
+            if (!fading) StartFading(Projectile.Center, fromNpc: true);
         }
 
         private bool LineCrossesSolid(Vector2 a, Vector2 b)
@@ -233,17 +302,6 @@ namespace JoJoStands.Projectiles
 
         private int FindTrailWallBreak()
         {
-            int len = Projectile.oldPos.Length;
-            for (int j = 0; j < len - 1; j++)
-            {
-                Vector2 curJ = Projectile.oldPos[j];
-                Vector2 nxtJ = Projectile.oldPos[j + 1];
-                if (curJ == Vector2.Zero || nxtJ == Vector2.Zero) continue;
-                Vector2 curCenterJ = curJ + Projectile.Size * 0.5f;
-                Vector2 nxtCenterJ = nxtJ + Projectile.Size * 0.5f;
-                if (LineCrossesSolid(nxtCenterJ, curCenterJ))
-                    return j;
-            }
             return -1;
         }
 
@@ -252,23 +310,41 @@ namespace JoJoStands.Projectiles
             float halfLen = (texHeight * 0.5f) * stretch;
             if (halfLen < 0.5f) return true;
 
-            Vector2 endBack = center - dirVec * halfLen;
-            if (PointInSolid(endBack)) return false;
-
-            float fullLen = halfLen * 2f;
+            Vector2 endBack  = center - dirVec * halfLen;
+            float   fullLen  = halfLen * 2f;
             const float step = 2f;
-            for (float t = step; t <= fullLen; t += step)
+
+            float visStart = 0f;
+            if (PointInSolid(endBack))
             {
-                Vector2 p = endBack + dirVec * t;
-                if (PointInSolid(p))
+                bool cleared = false;
+                for (float t = step; t <= fullLen; t += step)
                 {
-                    float clipped = t - step;
-                    if (clipped < 1f) return false;
-                    center  = endBack + dirVec * (clipped * 0.5f);
-                    stretch = clipped / texHeight;
-                    return true;
+                    if (!PointInSolid(endBack + dirVec * t))
+                    {
+                        visStart = t;
+                        cleared  = true;
+                        break;
+                    }
+                }
+                if (!cleared) return false;
+            }
+
+            float visEnd = fullLen;
+            for (float t = visStart + step; t <= fullLen; t += step)
+            {
+                if (PointInSolid(endBack + dirVec * t))
+                {
+                    visEnd = t - step;
+                    break;
                 }
             }
+
+            float visLen = visEnd - visStart;
+            if (visLen < 1f) return false;
+
+            center  = endBack + dirVec * (visStart + visLen * 0.5f);
+            stretch = visLen / texHeight;
             return true;
         }
 
@@ -303,6 +379,21 @@ namespace JoJoStands.Projectiles
         public override bool PreDraw(ref Color lightColor)
         {
             if (Main.netMode == NetmodeID.Server) return false;
+
+            Texture2D sparkTex    = TextureAssets.Dust.Value;
+            Vector2   sparkOrigin = new Vector2(5f, 5f);
+            Rectangle sparkRect   = new Rectangle(290, 0, 10, 10);
+            for (int i = 0; i < wallSparks.Count; i++)
+            {
+                WallSpark s = wallSparks[i];
+                float lifeFrac = s.maxLife > 0 ? s.life / (float)s.maxLife : 0f;
+                Color sparkColor = new Color(220, 240, 255, 240) * lifeFrac;
+                Main.EntitySpriteDraw(sparkTex, s.pos - Main.screenPosition, sparkRect,
+                    sparkColor, s.rot, sparkOrigin,
+                    new Vector2(s.scale * 2f, s.scale * 2f), SpriteEffects.None, 0);
+            }
+
+            if (inWallPhase) return false;
 
             Texture2D tex    = TextureAssets.Projectile[Projectile.type].Value;
             Vector2   origin = tex.Size() * 0.5f;
