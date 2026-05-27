@@ -41,7 +41,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected const float CONTROLABLE_RANGE = 260f;
         protected const int MAX_TRAP_AREAS = 3;
 
-        public override float MaxAltDistance => HasActiveControlledControllableDrop()
+        public override float MaxAltDistance => (HasActiveControlledControllableDrop() && secondaryStandRangeIndicatorTexture != null)
             ? Math.Max(0f, CONTROLABLE_RANGE - Main.player[Projectile.owner].GetModPlayer<MyPlayer>().standRangeBoosts)
             : 0f;
 
