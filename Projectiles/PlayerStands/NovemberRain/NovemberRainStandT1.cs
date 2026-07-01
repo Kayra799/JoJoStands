@@ -1087,7 +1087,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
                 standTexture = GetStandTexture("JoJoStands/Projectiles/PlayerStands/NovemberRain", "NovemberRain_Idle");
             switch (animationName)
             {
-                case "Idle": AnimateStand(animationName, 1, 12, loop: true); break;
+                case "Idle": AnimateStand(animationName, 10, 10, true); break;
                 case "Pose": AnimateStand(animationName, 1, 12, loop: true); break;
             }
         }

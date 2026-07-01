@@ -48,13 +48,12 @@ namespace JoJoStands.Projectiles
         private bool    wasMouseRight     = false;
         private int     spawnTimer        = 0;
         private bool    inWallPhase       = false;
-        private Vector2 prevCenter        = Vector2.Zero;
 
         private int GetSpawnGrowFrames(int standType)
         {
             if (standType == ModContent.ProjectileType<NovemberRainStandT2>()) return 34;
-            if (standType == ModContent.ProjectileType<NovemberRainStandT3>()) return 28;
-            if (standType == ModContent.ProjectileType<NovemberRainStandFinal>()) return 22;
+            if (standType == ModContent.ProjectileType<NovemberRainStandT3>()) return 26;
+            if (standType == ModContent.ProjectileType<NovemberRainStandFinal>()) return 20;
             return DEFAULT_SPAWN_GROW_FRAMES;
         }
 
@@ -104,8 +103,7 @@ namespace JoJoStands.Projectiles
 
         public override void AI()
         {
-            Player  player           = Main.player[Projectile.owner];
-            Vector2 frameStartCenter = Projectile.Center;
+            Player player = Main.player[Projectile.owner];
 
             if (firstFrame)
             {
@@ -201,33 +199,14 @@ namespace JoJoStands.Projectiles
                 if (Projectile.owner == Main.myPlayer)
                     wasMouseRight = Main.mouseRight;
                 if (spawnTimer == spawnGrowFrames)
-                {
                     inWallPhase = IsTrueSolid((int)(Projectile.Center.X / 16f), (int)(Projectile.Center.Y / 16f));
-                    prevCenter  = Projectile.Center;
-                }
                 return;
             }
 
-            if (inWallPhase)
-            {
-                Vector2 wpDelta = frameStartCenter - prevCenter;
-                float   wpDist  = wpDelta.Length();
-                if (wpDist > 0.5f)
-                {
-                    Vector2 wpDir = wpDelta / wpDist;
-                    bool    wpAir = false;
-                    for (float t = 0f; t <= wpDist; t += 2f)
-                    {
-                        bool solid = IsTrueSolid(
-                            (int)((prevCenter.X + wpDir.X * t) / 16f),
-                            (int)((prevCenter.Y + wpDir.Y * t) / 16f));
-                        if (!wpAir && !solid) wpAir = true;
-                        else if (wpAir && solid) { SplashDust(); Projectile.Kill(); return; }
-                    }
-                }
-                if (!IsTrueSolid((int)(frameStartCenter.X / 16f), (int)(frameStartCenter.Y / 16f)))
-                    inWallPhase = false;
-            }
+            if (inWallPhase && !IsTrueSolid((int)(Projectile.Center.X / 16f), (int)(Projectile.Center.Y / 16f)))
+                inWallPhase = false;
+
+            Projectile.tileCollide = !inWallPhase;
 
             if (Projectile.owner == Main.myPlayer && Projectile.ai[0] < 1f)
             {
@@ -321,6 +300,8 @@ namespace JoJoStands.Projectiles
                                 if (apexDist < APEX_REACHED_DIST || Projectile.Center.Y >= apexPos.Y)
                                 {
                                     inApexPhase = false;
+                                    if (cursorTarget.Y > apexPos.Y)
+                                        reachedCursorZone = true;
                                 }
                                 else
                                 {
@@ -372,47 +353,6 @@ namespace JoJoStands.Projectiles
                 if (Projectile.velocity.Y > 13f) Projectile.velocity.Y = 13f;
             }
 
-            if (!inWallPhase && Projectile.owner == Main.myPlayer && !released && Main.mouseRight)
-            {
-                Vector2 cursorPos = Main.MouseWorld + new Vector2(0f, CURSOR_TIP_Y_OFFSET);
-                int cursorTileX = (int)(cursorPos.X / 16f);
-                int cursorTileY = (int)(cursorPos.Y / 16f);
-                bool cursorInSolid = IsTrueSolid(cursorTileX, cursorTileY);
-
-                if (!cursorInSolid)
-                {
-                    int leftTileX = (int)((Projectile.position.X - 2f) / 16f);
-                    int rightTileX = (int)((Projectile.position.X + Projectile.width + 2f) / 16f);
-                    int currTileY = (int)((Projectile.position.Y + Projectile.height) / 16f);
-                    int groundTileY = -1;
-                    for (int ty = currTileY; ty <= currTileY + 3; ty++)
-                    {
-                        bool found = false;
-                        for (int tx = leftTileX; tx <= rightTileX; tx++)
-                        {
-                            if (IsTrueSolid(tx, ty)) { found = true; break; }
-                        }
-                        if (found) { groundTileY = ty; break; }
-                    }
-                    if (groundTileY >= 0)
-                    {
-                        float safeTopY = groundTileY * 16f - Projectile.height - 2f;
-                        if (Projectile.position.Y > safeTopY)
-                        {
-                            Projectile.position.Y = safeTopY;
-                            if (Projectile.velocity.Y > 0f) Projectile.velocity.Y = 0f;
-                        }
-                    }
-                }
-            }
-
-            if (!inWallPhase && HitsSolidTile())
-            {
-                SplashDust();
-                Projectile.Kill();
-                return;
-            }
-
             if (Projectile.velocity.LengthSquared() > 0.5f)
             {
                 float tilt = MathHelper.Clamp(Projectile.velocity.X * 0.06f, -0.52f, 0.52f);
@@ -429,7 +369,6 @@ namespace JoJoStands.Projectiles
                 Main.dust[d].noGravity = true;
             }
             Lighting.AddLight(Projectile.Center, 0.0f, 0.1f, 0.2f);
-            prevCenter = frameStartCenter;
         }
 
         public override bool PreDraw(ref Color lightColor)
@@ -477,8 +416,15 @@ namespace JoJoStands.Projectiles
 
         public override bool OnTileCollide(Vector2 oldVelocity)
         {
-            SplashDust();
-            return true;
+            bool activeControl = reachedCursorZone && Projectile.ai[0] < 1f;
+            bool floorHit      = Math.Abs(oldVelocity.Y) > Math.Abs(oldVelocity.X);
+
+            if (!activeControl || !floorHit)
+            {
+                SplashDust();
+                Projectile.Kill();
+            }
+            return false;
         }
     }
 }
