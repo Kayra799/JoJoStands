@@ -3,7 +3,6 @@ using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using Terraria;
-using Terraria.Audio;
 using Terraria.ID;
 using Terraria.ModLoader;
 
@@ -13,7 +12,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
     {
         public override int TierNumber => 1;
         public override string PoseSoundName => "";
-        public override string SpawnSoundName => "";
+        public override string SpawnSoundName => "NovemberRain" + Main.rand.Next(1, 4);
         public override int ProjectileDamage => 21;
         public override int ShootTime => 30;
         public override int HalfStandHeight => 96;
@@ -137,17 +136,6 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         {
             bool crit = Main.rand.Next(100) < player.GetTotalCritChance<MeleeDamageClass>();
             player.ApplyDamageToNPC(npc, baseDmg, 0.8f, direction, crit, DamageClass.Generic);
-        }
-
-        public override void ExtraSpawnEffects()
-        {
-            if (Main.netMode == NetmodeID.Server) return;
-            int idx = Main.rand.Next(1, 4);
-            SoundStyle spawnSound = new SoundStyle("JoJoStandsSounds/Sounds/SummonCries/NovemberRain" + idx)
-            {
-                Volume = global::JoJoStands.JoJoStands.ModSoundsVolume
-            };
-            SoundEngine.PlaySound(spawnSound, Projectile.Center);
         }
 
         public override void AI()
