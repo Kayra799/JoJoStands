@@ -20,6 +20,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected override int TRAP_MAX_TICKS => 900;
         // Trap
         protected override int MaxFloorCeilingTraps => 8;
+        protected override float CONTROLABLE_RANGE => 250f;
 
         private int ctrlDropActive = 0;
 

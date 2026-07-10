@@ -26,6 +26,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected override int TRAP_MAX_TICKS => 1500;
         // Trap
         protected override int MaxFloorCeilingTraps => 12;
+        protected override float CONTROLABLE_RANGE => 270f;
 
         protected override bool IsAreaAbilityActive(MyPlayer mPlayer) =>
             mPlayer.standControlStyle == MyPlayer.StandControlStyle.Auto || maelActive;

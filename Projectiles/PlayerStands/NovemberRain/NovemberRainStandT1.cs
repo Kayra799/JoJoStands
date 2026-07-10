@@ -37,7 +37,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected virtual int TRAP_SPAWN_TICKS => 0;
         protected virtual int TRAP_BASE_TICKS => 0;
         protected virtual int TRAP_MAX_TICKS => 0;
-        protected const float CONTROLABLE_RANGE = 260f;
+        protected virtual float CONTROLABLE_RANGE => 260f;
         protected const int MAX_TRAP_AREAS = 3;
 
         public override float MaxAltDistance => HasActiveControlledControllableDrop()

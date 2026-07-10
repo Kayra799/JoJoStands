@@ -37,7 +37,9 @@ namespace JoJoStands.Projectiles
         private const float CURSOR_TIP_Y_OFFSET = 3f;
 
         private const float FREE_GRAVITY      = 0.42f;
-        private const float CONTROL_RANGE     = 260f;
+        private const float CONTROL_RANGE_T2   = 250f;
+        private const float CONTROL_RANGE_T3   = 260f;
+        private const float CONTROL_RANGE_T4   = 270f;
 
         private Vector2 spawnPos          = Vector2.Zero;
         private Vector2 apexPos           = Vector2.Zero;
@@ -48,6 +50,7 @@ namespace JoJoStands.Projectiles
         private bool    wasMouseRight     = false;
         private int     spawnTimer        = 0;
         private bool    inWallPhase       = false;
+        private float   controlRange      = CONTROL_RANGE_T3;
 
         private int GetSpawnGrowFrames(int standType)
         {
@@ -55,6 +58,13 @@ namespace JoJoStands.Projectiles
             if (standType == ModContent.ProjectileType<NovemberRainStandT3>()) return 26;
             if (standType == ModContent.ProjectileType<NovemberRainStandFinal>()) return 20;
             return DEFAULT_SPAWN_GROW_FRAMES;
+        }
+
+        private float GetControlRange(int standType)
+        {
+            if (standType == ModContent.ProjectileType<NovemberRainStandT2>()) return CONTROL_RANGE_T2;
+            if (standType == ModContent.ProjectileType<NovemberRainStandFinal>()) return CONTROL_RANGE_T4;
+            return CONTROL_RANGE_T3;
         }
 
         public override void SetDefaults()
@@ -104,6 +114,9 @@ namespace JoJoStands.Projectiles
         public override void AI()
         {
             Player player = Main.player[Projectile.owner];
+            if (!player.active || player.dead) { Projectile.Kill(); return; }
+            MyPlayer mPlayer = player.GetModPlayer<MyPlayer>();
+            if (!mPlayer.standOut) { Projectile.Kill(); return; }
 
             if (firstFrame)
             {
@@ -126,6 +139,7 @@ namespace JoJoStands.Projectiles
                         Projectile.spriteDirection = sp.spriteDirection;
                         Projectile.direction = sp.spriteDirection;
                         spawnGrowFrames = GetSpawnGrowFrames(sp.type);
+                        controlRange = GetControlRange(sp.type);
                         break;
                     }
                 }
@@ -225,7 +239,7 @@ namespace JoJoStands.Projectiles
                 if (!released)
                 {
                     Vector2 standCenter = player.Center;
-                    bool    inRange     = Vector2.Distance(Projectile.Center, standCenter) < CONTROL_RANGE;
+                    bool    inRange     = Vector2.Distance(Projectile.Center, standCenter) < controlRange;
 
                     if (!inRange)
                     {
