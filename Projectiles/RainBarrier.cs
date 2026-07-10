@@ -53,6 +53,8 @@ namespace JoJoStands.Projectiles
         {
             Player player = Main.player[Projectile.owner];
             if (!player.active || player.dead) { Projectile.Kill(); return; }
+            MyPlayer mPlayer = player.GetModPlayer<MyPlayer>();
+            if (!mPlayer.standOut) { Projectile.Kill(); return; }
 
             float anchorX;
             int standIdx = (int)Projectile.ai[0];

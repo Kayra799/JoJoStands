@@ -270,6 +270,8 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
 
         public override void OnKill(int timeLeft)
         {
+            base.OnKill(timeLeft);
+
             Player player = Main.player[Projectile.owner];
             MyPlayer mPlayer = player.GetModPlayer<MyPlayer>();
 
