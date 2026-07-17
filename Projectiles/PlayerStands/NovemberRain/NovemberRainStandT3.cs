@@ -45,6 +45,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             if (mPlayer.standOut) Projectile.timeLeft = 2;
 
             SnapAbovePlayer(player);
+            UpdateLegs(player);
             ApplyStuns();
             UpdateTraps(mPlayer, player);
             CheckTrapTriggers(mPlayer);

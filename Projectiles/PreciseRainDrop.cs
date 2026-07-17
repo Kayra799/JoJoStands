@@ -13,6 +13,7 @@ namespace JoJoStands.Projectiles
         public override string Texture => "JoJoStands/Projectiles/RainDrop";
 
         private bool firstFrame = true;
+        private Vector2 lastAnchorPos = Vector2.Zero;
 
         private bool fading = false;
         private int fadeAge = 0;
@@ -54,6 +55,21 @@ namespace JoJoStands.Projectiles
             Projectile.localNPCHitCooldown = 20;
         }
 
+        private bool TryGetAnchor(out Vector2 anchorCenter)
+        {
+            if (Projectile.owner >= 0 && Projectile.owner < Main.player.Length)
+            {
+                Player p = Main.player[Projectile.owner];
+                if (p != null && p.active && !p.dead)
+                {
+                    anchorCenter = p.Center;
+                    return true;
+                }
+            }
+            anchorCenter = Vector2.Zero;
+            return false;
+        }
+
         public override void AI()
         {
             Vector2 frameStartCenter = Projectile.Center;
@@ -71,8 +87,25 @@ namespace JoJoStands.Projectiles
             if (firstFrame)
             {
                 firstFrame = false;
+                if (TryGetAnchor(out Vector2 a0)) lastAnchorPos = a0;
+                else lastAnchorPos = Projectile.Center;
                 inWallPhase = HitboxInSolidAt(Projectile.position);
                 prevCenter = Projectile.Center;
+            }
+            else if (!fading && TryGetAnchor(out Vector2 anchorNow))
+            {
+                Vector2 anchorDelta = anchorNow - lastAnchorPos;
+                if (anchorDelta != Vector2.Zero)
+                {
+                    Projectile.position += anchorDelta;
+                    int len = Projectile.oldPos.Length;
+                    for (int i = 0; i < len; i++)
+                    {
+                        if (Projectile.oldPos[i] != Vector2.Zero)
+                            Projectile.oldPos[i] += anchorDelta;
+                    }
+                }
+                lastAnchorPos = anchorNow;
             }
 
             if (inWallPhase)

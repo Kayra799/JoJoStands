@@ -80,6 +80,181 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected bool[] npcWasInArea = new bool[Main.maxNPCs];
         protected int[] npcStunTimers = new int[Main.maxNPCs];
 
+        // Procedural Legs
+        private const int LEG_COUNT = 4;
+        private static readonly float[] LegRootOffsetX = { -32f, -20f, 20f, 32f };
+        private const float LegRootOffsetY = -46f;
+        private const float LegTopLength = 18f;
+        private const float LegBottomLength = 136f;
+        private const float LegReach = LegTopLength + LegBottomLength;
+        private const float LegStepHeight = 58f;
+        private const float LegStepSway = 42f;
+        private const float LegWalkSpeed = 0.034f;
+        private const float LegStanceDuty = 0.46f;
+        private const float LegAirTrailFactor = 3f;
+        private const float LegAirMaxTrail = 40f;
+        private const float LegAirLiftFactor = 1.5f;
+        private const float LegAirMaxLift = 35f;
+        private const float LegBackDepthScale = 0.62f;
+        private static readonly bool[] LegIsFront = { true, false, false, true };
+
+        private Vector2[] legPos = new Vector2[LEG_COUNT];
+        private Vector2[] legLift = new Vector2[LEG_COUNT];
+        private float[] legFootX = new float[LEG_COUNT];
+        private float[] legSwingStartX = new float[LEG_COUNT];
+        private bool[] legWasSwinging = new bool[LEG_COUNT];
+        private bool legsReady = false;
+        private float walkPhase = 0f;
+        private float legWalkIntensity = 0f;
+
+        private Vector2 LegBodyCenter() =>
+            Projectile.Center + new Vector2(StandOffset.X * Projectile.spriteDirection, StandOffset.Y);
+
+        private Vector2 LegRootWorld(int i) =>
+            LegBodyCenter() + new Vector2(LegRootOffsetX[i] * Projectile.spriteDirection, LegRootOffsetY);
+
+        private float FindGroundY(Vector2 top, float maxDist)
+        {
+            for (float d = 0f; d <= maxDist; d += 4f)
+            {
+                Vector2 p = new Vector2(top.X, top.Y + d);
+                if (Collision.SolidCollision(p, 4, 4, true) || Collision.IsWorldPointSolid(p, false))
+                    return top.Y + d;
+            }
+            return top.Y + maxDist;
+        }
+
+        protected void UpdateLegs(Player player)
+        {
+            if (Main.netMode == NetmodeID.Server) return;
+
+            bool grounded = player.velocity.Y == 0f;
+
+            if (!grounded)
+            {
+                legWalkIntensity = 0f;
+                float airSpeed = player.velocity.Length();
+                float trailX = MathHelper.Clamp(-player.velocity.X * LegAirTrailFactor, -LegAirMaxTrail, LegAirMaxTrail);
+                float airLift = MathHelper.Clamp(airSpeed * LegAirLiftFactor, 0f, LegAirMaxLift);
+
+                for (int i = 0; i < LEG_COUNT; i++)
+                {
+                    float depthScale = LegIsFront[i] ? 1f : LegBackDepthScale;
+                    Vector2 root = LegRootWorld(i);
+                    float footX = root.X + trailX;
+                    legFootX[i] = footX;
+                    legWasSwinging[i] = false;
+                    legPos[i] = new Vector2(footX, FindGroundY(new Vector2(footX, root.Y), LegReach));
+                    legLift[i] = new Vector2(0f, -airLift * depthScale);
+                }
+                legsReady = true;
+                return;
+            }
+
+            float speed = player.velocity.Length();
+            walkPhase += speed * LegWalkSpeed;
+            legWalkIntensity = MathHelper.Lerp(legWalkIntensity, MathHelper.Clamp(speed / 6f, 0f, 1f), 0.1f);
+
+            for (int i = 0; i < LEG_COUNT; i++)
+            {
+                float depthScale = LegIsFront[i] ? 1f : LegBackDepthScale;
+                Vector2 root = LegRootWorld(i);
+                if (!legsReady)
+                    legFootX[i] = root.X;
+
+                float cyclePos = walkPhase / MathHelper.TwoPi + (i % 2 == 0 ? 0f : 0.5f);
+                cyclePos -= (float)Math.Floor(cyclePos);
+
+                float liftAmount;
+                if (cyclePos < LegStanceDuty)
+                {
+                    liftAmount = 0f;
+                    legWasSwinging[i] = false;
+                }
+                else
+                {
+                    float swingT = (cyclePos - LegStanceDuty) / (1f - LegStanceDuty);
+                    if (!legWasSwinging[i])
+                    {
+                        legSwingStartX[i] = legFootX[i];
+                        legWasSwinging[i] = true;
+                    }
+
+                    float easeOutInv = 1f - swingT;
+                    float eased = 1f - easeOutInv * easeOutInv * easeOutInv;
+                    float liveTargetX = root.X + LegStepSway * Projectile.spriteDirection;
+                    legFootX[i] = MathHelper.Lerp(legSwingStartX[i], liveTargetX, eased);
+                    liftAmount = (float)Math.Sin(swingT * MathHelper.Pi);
+                }
+
+                float groundY = FindGroundY(new Vector2(legFootX[i], root.Y), LegReach);
+                legPos[i] = new Vector2(legFootX[i], groundY);
+                legLift[i] = new Vector2(0f, -liftAmount * LegStepHeight * depthScale * legWalkIntensity);
+            }
+
+            legsReady = true;
+        }
+
+        private static float TriangleAngle(float opposite, float adjacent1, float adjacent2)
+        {
+            float cos = (adjacent1 * adjacent1 + adjacent2 * adjacent2 - opposite * opposite) / (2f * adjacent1 * adjacent2);
+            cos = MathHelper.Clamp(cos, -1f, 1f);
+            return (float)Math.Acos(cos);
+        }
+
+        private void DrawLegs(bool front)
+        {
+            Texture2D legTop;
+            Texture2D legBottom;
+            try
+            {
+                legTop = (Texture2D)ModContent.Request<Texture2D>("JoJoStands/Projectiles/PlayerStands/NovemberRain/NovemberRain_LegTop");
+                legBottom = (Texture2D)ModContent.Request<Texture2D>("JoJoStands/Projectiles/PlayerStands/NovemberRain/NovemberRain_LegBottom");
+            }
+            catch { return; }
+            if (legTop == null || legBottom == null) return;
+
+            float minReach = Math.Abs(LegBottomLength - LegTopLength) + 1f;
+            float maxReach = LegReach * 0.999f;
+
+            for (int i = 0; i < LEG_COUNT; i++)
+            {
+                if (LegIsFront[i] != front) continue;
+                Vector2 root = LegRootWorld(i);
+                Vector2 footWorld = legPos[i] + legLift[i];
+
+                float footDist = MathHelper.Clamp(Vector2.Distance(root, footWorld), minReach, maxReach);
+
+                float angleAtRoot = TriangleAngle(LegBottomLength, footDist, LegTopLength);
+                float angleAtFoot = TriangleAngle(LegTopLength, footDist, LegBottomLength);
+
+                Vector2 toFoot = footWorld - root;
+                float parentAngle = toFoot.ToRotation() - MathHelper.PiOver2;
+
+                bool footRightOfCenter = LegRootOffsetX[i] * Projectile.spriteDirection > 0f;
+                float sideSign = footRightOfCenter ? -1f : 1f;
+
+                float topRotation = parentAngle + angleAtRoot * sideSign;
+                Vector2 topEnd = root + new Vector2(0f, LegTopLength).RotatedBy(topRotation);
+                float bottomRotation = parentAngle - angleAtFoot * sideSign;
+
+                SpriteEffects fx = footRightOfCenter ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+
+                Vector2 topOrigin = new Vector2(legTop.Width * 0.5f, 0f);
+                Main.EntitySpriteDraw(legTop, root - Main.screenPosition, null, Color.White, topRotation, topOrigin, 1f, fx, 0);
+
+                Vector2 bottomOrigin = new Vector2(legBottom.Width * 0.5f, 0f);
+                Main.EntitySpriteDraw(legBottom, topEnd - Main.screenPosition, null, Color.White, bottomRotation, bottomOrigin, 1f, fx, 0);
+            }
+        }
+
+        public override void PostDrawExtras()
+        {
+            base.PostDrawExtras();
+            if (Main.netMode == NetmodeID.Server) return;
+            if (currentAnimationState == AnimationState.Idle) DrawLegs(front: true);
+        }
+
         public enum SurfaceType { Floor = 0, Ceiling = 1, BackWall = 2 }
 
         public class TrapSurface
@@ -152,6 +327,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             if (mPlayer.standOut) Projectile.timeLeft = 2;
 
             SnapAbovePlayer(player);
+            UpdateLegs(player);
             ApplyStuns();
             UpdateTraps(mPlayer, player);
             CheckTrapTriggers(mPlayer);
@@ -878,7 +1054,9 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         // Draw
         public override bool PreDrawExtras()
         {
-            if (ActiveTraps.Count == 0 || Main.netMode == NetmodeID.Server) return true;
+            if (Main.netMode == NetmodeID.Server) return true;
+            if (currentAnimationState == AnimationState.Idle) DrawLegs(front: false);
+            if (ActiveTraps.Count == 0) return true;
             int loopFrame = (int)(Main.GameUpdateCount / 18) % 4;
 
             Texture2D bwTex = null;
@@ -1072,7 +1250,11 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         public override void PlayAnimation(string animationName)
         {
             if (Main.netMode != NetmodeID.Server)
-                standTexture = GetStandTexture("JoJoStands/Projectiles/PlayerStands/NovemberRain", "NovemberRain_Idle");
+            {
+                standTexture = animationName == "Idle"
+                    ? GetStandTexture("JoJoStands/Projectiles/PlayerStands/NovemberRain", "NovemberRain_IdleBody")
+                    : GetStandTexture("JoJoStands/Projectiles/PlayerStands/NovemberRain", "NovemberRain_Idle");
+            }
             switch (animationName)
             {
                 case "Idle": AnimateStand(animationName, 10, 10, true); break;
