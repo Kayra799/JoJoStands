@@ -81,6 +81,8 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected int[] npcStunTimers = new int[Main.maxNPCs];
 
         // Procedural Legs
+        private Texture2D legTop;
+        private Texture2D legBottom;
         private const int LEG_COUNT = 4;
         private static readonly float[] LegRootOffsetX = { -32f, -20f, 20f, 32f };
         private const float LegRootOffsetY = -46f;
@@ -126,10 +128,10 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
 
         protected void UpdateLegs(Player player)
         {
-            if (Main.netMode == NetmodeID.Server) return;
+            if (Main.netMode == NetmodeID.Server)
+                return;
 
             bool grounded = player.velocity.Y == 0f;
-
             if (!grounded)
             {
                 legWalkIntensity = 0f;
@@ -195,7 +197,7 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             legsReady = true;
         }
 
-        private static float TriangleAngle(float opposite, float adjacent1, float adjacent2)
+        private float TriangleAngle(float opposite, float adjacent1, float adjacent2)
         {
             float cos = (adjacent1 * adjacent1 + adjacent2 * adjacent2 - opposite * opposite) / (2f * adjacent1 * adjacent2);
             cos = MathHelper.Clamp(cos, -1f, 1f);
@@ -204,22 +206,21 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
 
         private void DrawLegs(bool front)
         {
-            Texture2D legTop;
-            Texture2D legBottom;
-            try
+            if (legTop == null || legBottom == null)
             {
-                legTop = (Texture2D)ModContent.Request<Texture2D>("JoJoStands/Projectiles/PlayerStands/NovemberRain/NovemberRain_LegTop");
-                legBottom = (Texture2D)ModContent.Request<Texture2D>("JoJoStands/Projectiles/PlayerStands/NovemberRain/NovemberRain_LegBottom");
+                legTop = (Texture2D)ModContent.Request<Texture2D>("JoJoStands/Projectiles/PlayerStands/NovemberRain/NovemberRain_LegTop", ReLogic.Content.AssetRequestMode.ImmediateLoad);
+                legBottom = (Texture2D)ModContent.Request<Texture2D>("JoJoStands/Projectiles/PlayerStands/NovemberRain/NovemberRain_LegBottom", ReLogic.Content.AssetRequestMode.ImmediateLoad);
+                return;
             }
-            catch { return; }
-            if (legTop == null || legBottom == null) return;
 
             float minReach = Math.Abs(LegBottomLength - LegTopLength) + 1f;
             float maxReach = LegReach * 0.999f;
 
             for (int i = 0; i < LEG_COUNT; i++)
             {
-                if (LegIsFront[i] != front) continue;
+                if (LegIsFront[i] != front)
+                    continue;
+
                 Vector2 root = LegRootWorld(i);
                 Vector2 footWorld = legPos[i] + legLift[i];
 
@@ -241,10 +242,12 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
                 SpriteEffects fx = footRightOfCenter ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
 
                 Vector2 topOrigin = new Vector2(legTop.Width * 0.5f, 0f);
-                Main.EntitySpriteDraw(legTop, root - Main.screenPosition, null, Color.White, topRotation, topOrigin, 1f, fx, 0);
+                Color legColor = front ? Color.White : Color.White * 0.6f;
+                legColor.A = 255;
+                Main.EntitySpriteDraw(legTop, root - Main.screenPosition, null, legColor, topRotation, topOrigin, 1f, fx, 0);
 
                 Vector2 bottomOrigin = new Vector2(legBottom.Width * 0.5f, 0f);
-                Main.EntitySpriteDraw(legBottom, topEnd - Main.screenPosition, null, Color.White, bottomRotation, bottomOrigin, 1f, fx, 0);
+                Main.EntitySpriteDraw(legBottom, topEnd - Main.screenPosition, null, legColor, bottomRotation, bottomOrigin, 1f, fx, 0);
             }
         }
 
@@ -1070,9 +1073,9 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
                     ? Math.Max(0f, Math.Min(1f, trap.DurationTicks / (float)trap.BaseDuration))
                     : 1f;
 
-                var ceilingCols = new System.Collections.Generic.HashSet<int>();
-                var topWallCols = new System.Collections.Generic.List<int>();
-                var topWallSurfs = new System.Collections.Generic.List<TrapSurface>();
+                var ceilingCols = new HashSet<int>();
+                var topWallCols = new List<int>();
+                var topWallSurfs = new List<TrapSurface>();
 
                 foreach (var surf in trap.Surfaces)
                 {
