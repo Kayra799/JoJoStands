@@ -13,12 +13,19 @@ namespace JoJoStands.Projectiles
         public override string Texture => "JoJoStands/Projectiles/RainDrop";
 
         private bool firstFrame = true;
-        private Vector2 lastAnchorPos = Vector2.Zero;
+        private Vector2 spawnAnchorPos = Vector2.Zero;
+        private Vector2 anchorOffset = Vector2.Zero;
 
         private bool fading = false;
-        private int fadeAge = 0;
         private Vector2 fadeStopCenter = Vector2.Zero;
-        private const int FadeFrames = 8;
+        private Vector2[] fadeTrail = Array.Empty<Vector2>();
+        private float fadeTotalLength = 0f;
+        private float fadeConsumed = 0f;
+        private float fadeSpeed = 0f;
+        private const float MIN_FADE_SPEED = 12f;
+        private const int PIERCE_COUNT = 10;
+        private int pierceLeft = PIERCE_COUNT;
+        private const float SPAWN_TRAIL_GAP = 6f;
 
         private bool inWallPhase = false;
         private Vector2 prevCenter = Vector2.Zero;
@@ -55,21 +62,6 @@ namespace JoJoStands.Projectiles
             Projectile.localNPCHitCooldown = 20;
         }
 
-        private bool TryGetAnchor(out Vector2 anchorCenter)
-        {
-            if (Projectile.owner >= 0 && Projectile.owner < Main.player.Length)
-            {
-                Player p = Main.player[Projectile.owner];
-                if (p != null && p.active && !p.dead)
-                {
-                    anchorCenter = p.Center;
-                    return true;
-                }
-            }
-            anchorCenter = Vector2.Zero;
-            return false;
-        }
-
         public override void AI()
         {
             Vector2 frameStartCenter = Projectile.Center;
@@ -87,25 +79,15 @@ namespace JoJoStands.Projectiles
             if (firstFrame)
             {
                 firstFrame = false;
-                if (TryGetAnchor(out Vector2 a0)) lastAnchorPos = a0;
-                else lastAnchorPos = Projectile.Center;
+                spawnAnchorPos = Main.player[Projectile.owner].Center;
                 inWallPhase = HitboxInSolidAt(Projectile.position);
                 prevCenter = Projectile.Center;
+                float spawnGap = Math.Min(SPAWN_TRAIL_GAP, Projectile.velocity.Length());
+                Projectile.oldPos[0] = Projectile.position + Projectile.velocity.SafeNormalize(Vector2.Zero) * spawnGap;
             }
-            else if (!fading && TryGetAnchor(out Vector2 anchorNow))
+            else if (!fading)
             {
-                Vector2 anchorDelta = anchorNow - lastAnchorPos;
-                if (anchorDelta != Vector2.Zero)
-                {
-                    Projectile.position += anchorDelta;
-                    int len = Projectile.oldPos.Length;
-                    for (int i = 0; i < len; i++)
-                    {
-                        if (Projectile.oldPos[i] != Vector2.Zero)
-                            Projectile.oldPos[i] += anchorDelta;
-                    }
-                }
-                lastAnchorPos = anchorNow;
+                anchorOffset = Main.player[Projectile.owner].Center - spawnAnchorPos;
             }
 
             if (inWallPhase)
@@ -148,14 +130,15 @@ namespace JoJoStands.Projectiles
 
             if (fading)
             {
-                Projectile.velocity *= 0.55f;
-                fadeAge++;
-                if (fadeAge >= FadeFrames)
+                Projectile.velocity = Vector2.Zero;
+                Projectile.timeLeft = Math.Max(Projectile.timeLeft, 2);
+                fadeConsumed += fadeSpeed;
+                if (fadeConsumed >= fadeTotalLength)
                 {
                     Projectile.Kill();
                     return;
                 }
-                float lf = 1f - fadeAge / (float)FadeFrames;
+                float lf = 1f - fadeConsumed / fadeTotalLength;
                 Lighting.AddLight(fadeStopCenter, 0.05f * lf, 0.10f * lf, 0.18f * lf);
                 prevCenter = frameStartCenter;
                 return;
@@ -174,16 +157,36 @@ namespace JoJoStands.Projectiles
                 Main.dust[d].velocity *= 0.25f;
             }
             Lighting.AddLight(Projectile.Center, 0.05f, 0.10f, 0.18f);
-            Projectile.tileCollide = !inWallPhase;
             prevCenter = frameStartCenter;
+
+            if (!inWallPhase && !NearbyHittableNPC(Projectile.velocity))
+            {
+                Vector2 travelEnd = Projectile.Center + Projectile.velocity;
+                Vector2 hitCenter = FirstContactWithTile(Projectile.velocity);
+                if (hitCenter != travelEnd)
+                {
+                    Projectile.position = hitCenter - Projectile.Size * 0.5f;
+                    StartFading(hitCenter);
+                }
+            }
         }
 
         private void StartFading(Vector2 fadeCenter)
         {
             if (fading) return;
             fading = true;
-            fadeAge = 0;
             fadeStopCenter = fadeCenter;
+            fadeSpeed = Math.Max(Projectile.velocity.Length(), MIN_FADE_SPEED);
+
+            Vector2[] live = BuildTrailPoints();
+            fadeTrail = new Vector2[live.Length + 1];
+            fadeTrail[0] = fadeCenter;
+            Array.Copy(live, 0, fadeTrail, 1, live.Length);
+            fadeTotalLength = 0f;
+            for (int i = 0; i < fadeTrail.Length - 1; i++)
+                fadeTotalLength += Vector2.Distance(fadeTrail[i], fadeTrail[i + 1]);
+            fadeConsumed = 0f;
+
             Projectile.friendly = false;
             Projectile.damage = 0;
             Projectile.velocity = Vector2.Zero;
@@ -250,17 +253,71 @@ namespace JoJoStands.Projectiles
         public override void OnHitNPC(NPC target, NPC.HitInfo hit, int damageDone)
         {
             if (fading) return;
-            Vector2 snapCenter = prevCenter == Vector2.Zero ? Projectile.Center : prevCenter;
+            pierceLeft--;
+            if (pierceLeft > 0) return;
+            Vector2 snapCenter = FirstContactWithRect(target.getRect());
             Projectile.position = snapCenter - Projectile.Size * 0.5f;
-            if (Projectile.oldPos.Length > 0)
-                Projectile.oldPos[0] = Projectile.position;
             StartFading(snapCenter);
         }
 
-        public override bool OnTileCollide(Vector2 oldVelocity)
+        private Vector2 SweptStart()
         {
-            Projectile.velocity = oldVelocity;
-            StartFading(Projectile.Center);
+            return prevCenter == Vector2.Zero ? Projectile.Center : prevCenter;
+        }
+
+        private Vector2 FirstContactWithRect(Rectangle targetRect)
+        {
+            Vector2 start = SweptStart();
+            Vector2 end = Projectile.Center;
+            Vector2 seg = end - start;
+            float segLen = seg.Length();
+            if (segLen < 1f) return end;
+
+            Vector2 dir = seg / segLen;
+            Vector2 half = Projectile.Size * 0.5f;
+            for (float t = 0f; t <= segLen; t += 4f)
+            {
+                Vector2 c = start + dir * t;
+                Rectangle pr = new Rectangle((int)(c.X - half.X), (int)(c.Y - half.Y), Projectile.width, Projectile.height);
+                if (pr.Intersects(targetRect)) return c;
+            }
+            return end;
+        }
+
+        private Vector2 FirstContactWithTile(Vector2 travel)
+        {
+            Vector2 start = Projectile.Center;
+            Vector2 end = start + travel;
+            float segLen = travel.Length();
+            if (segLen < 1f) return end;
+
+            Vector2 dir = travel / segLen;
+            Vector2 half = Projectile.Size * 0.5f;
+            Vector2 last = start;
+            for (float t = 0f; t <= segLen; t += 4f)
+            {
+                Vector2 c = start + dir * t;
+                if (HitboxInSolidAt(c - half)) return last;
+                last = c;
+            }
+            if (HitboxInSolidAt(end - half)) return last;
+            return end;
+        }
+
+        private bool NearbyHittableNPC(Vector2 travel)
+        {
+            const float checkRadius = 48f;
+            Vector2 a = Projectile.Center;
+            Vector2 seg = travel;
+            float segLen2 = seg.LengthSquared();
+            for (int i = 0; i < Main.maxNPCs; i++)
+            {
+                NPC npc = Main.npc[i];
+                if (!npc.active || npc.friendly || npc.dontTakeDamage) continue;
+                float t = segLen2 < 0.01f ? 0f : MathHelper.Clamp(Vector2.Dot(npc.Center - a, seg) / segLen2, 0f, 1f);
+                if (Vector2.Distance(a + seg * t, npc.Center) < checkRadius)
+                    return true;
+            }
             return false;
         }
 
@@ -326,59 +383,94 @@ namespace JoJoStands.Projectiles
                     new Vector2(s.scale * 2f, s.scale * 2f), SpriteEffects.None, 0);
             }
 
-            if (inWallPhase) return false;
+            if (firstFrame || inWallPhase) return false;
 
             Texture2D tex = TextureAssets.Projectile[Projectile.type].Value;
             Vector2 origin = tex.Size() * 0.5f;
 
-            float fadeAlpha = fading
-                ? MathHelper.Clamp(1f - fadeAge / (float)FadeFrames, 0f, 1f)
-                : 1f;
-
-            DrawTrailLayer(tex, origin, new Color(60, 145, 255, 80) * fadeAlpha, 0.55f);
-            DrawTrailLayer(tex, origin, new Color(190, 230, 255, 220) * fadeAlpha, 0.25f);
+            DrawTrailLayer(tex, origin, new Color(60, 145, 255, 80), 0.65f);
+            DrawTrailLayer(tex, origin, new Color(190, 230, 255, 220), 0.30f);
 
             if (!fading)
             {
-                Vector2 headCenter = Projectile.Center;
                 float speed = Projectile.velocity.Length();
-                float tipS = MathHelper.Clamp(speed / 4f, 1.4f, 6f);
                 Vector2 headDir = speed > 0.01f ? Projectile.velocity / speed : Vector2.UnitY;
+                if (Projectile.oldPos.Length > 1 && Projectile.oldPos[1] != Vector2.Zero)
+                {
+                    float[] weights = ComputeTrailWeights();
+                    Vector2 toHead = Projectile.position - (Projectile.oldPos[1] + anchorOffset * weights[1]);
+                    if (toHead.LengthSquared() > 0.25f) headDir = Vector2.Normalize(toHead);
+                }
+                float headRot = headDir.ToRotation() + MathHelper.PiOver2;
+                Vector2 headCenter = Projectile.Center - headDir * (speed * 0.5f);
+                float tipS = Math.Max((speed + Math.Min(TRAIL_SEGMENT_OVERLAP, speed)) / tex.Height, 1.4f);
 
                 if (ClipSpriteSegment(headDir, tex.Height, ref headCenter, ref tipS))
                 {
                     Main.EntitySpriteDraw(tex, headCenter - Main.screenPosition, null,
-                        new Color(220, 240, 255, 240), Projectile.rotation, origin,
-                        new Vector2(0.32f, tipS), SpriteEffects.None, 0);
+                        new Color(220, 240, 255, 240), headRot, origin,
+                        new Vector2(0.38f, tipS), SpriteEffects.None, 0);
                 }
             }
 
             return false;
         }
 
+        private const float TRAIL_SEGMENT_OVERLAP = 24f;
+
+        private float[] ComputeTrailWeights()
+        {
+            int len = Projectile.oldPos.Length;
+            float[] weights = new float[len];
+            float total = 0f;
+            Vector2 prev = Projectile.position;
+            for (int i = 0; i < len && Projectile.oldPos[i] != Vector2.Zero; i++)
+            {
+                total += Vector2.Distance(prev, Projectile.oldPos[i]);
+                weights[i] = total;
+                prev = Projectile.oldPos[i];
+            }
+            for (int i = 0; i < len; i++)
+                weights[i] = total > 0.5f ? weights[i] / total : 0f;
+            return weights;
+        }
+
+        private Vector2[] BuildTrailPoints()
+        {
+            int len = Projectile.oldPos.Length;
+            float[] weights = ComputeTrailWeights();
+            int count = 0;
+            while (count < len && Projectile.oldPos[count] != Vector2.Zero) count++;
+            Vector2[] points = new Vector2[count];
+            for (int i = 0; i < count; i++)
+                points[i] = Projectile.oldPos[i] + anchorOffset * weights[i] + Projectile.Size * 0.5f;
+            return points;
+        }
+
         private void DrawTrailLayer(Texture2D tex, Vector2 origin, Color baseColor, float widthScale)
         {
             int len = Projectile.oldPos.Length;
             float texHeight = tex.Height;
+            Vector2[] points = fading ? fadeTrail : BuildTrailPoints();
+            float visibleLength = fading ? fadeTotalLength - fadeConsumed : float.MaxValue;
+            float walked = 0f;
 
-            for (int i = 0; i < len - 1; i++)
+            for (int i = 0; i < points.Length - 1; i++)
             {
-                Vector2 cur = Projectile.oldPos[i];
-                Vector2 nxt = Projectile.oldPos[i + 1];
-                if (cur == Vector2.Zero || nxt == Vector2.Zero) continue;
-
-                Vector2 curCenter = cur + Projectile.Size * 0.5f;
-
-                Vector2 delta = cur - nxt;
+                if (walked >= visibleLength) break;
+                Vector2 curCenter = points[i];
+                Vector2 delta = curCenter - points[i + 1];
                 float dl = delta.Length();
                 if (dl < 0.5f) continue;
+                float segLen = Math.Min(dl, visibleLength - walked);
+                walked += dl;
 
                 float rot = delta.ToRotation() + MathHelper.PiOver2;
                 float fade = 1f - (i / (float)len) * 0.85f;
-                float stretch = MathHelper.Clamp(dl / 4f, 1.2f, 6f);
+                float stretch = (segLen + Math.Min(TRAIL_SEGMENT_OVERLAP, segLen)) / texHeight;
                 Vector2 dirVec = delta / dl;
 
-                Vector2 drawCenter = curCenter;
+                Vector2 drawCenter = curCenter - dirVec * (segLen * 0.5f);
                 float drawStretch = stretch;
 
                 if (!ClipSpriteSegment(dirVec, texHeight, ref drawCenter, ref drawStretch))

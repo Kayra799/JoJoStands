@@ -12,25 +12,30 @@ namespace JoJoStands.Projectiles
     {
         public override string Texture => "JoJoStands/Projectiles/ControllableRainDrop";
 
-        private const int   DEFAULT_SPAWN_GROW_FRAMES = 30;
+        private const int   SUB_STEPS = 6;
+        private const float STEP_SCALE = 1f / SUB_STEPS;
+        private const float STEP_SCALE2 = 1f / (SUB_STEPS * SUB_STEPS);
+
+        private const int   DEFAULT_SPAWN_GROW_FRAMES = 24;
+        private const int   DROP_TIME_LEFT = 600;
         private int spawnGrowFrames = DEFAULT_SPAWN_GROW_FRAMES;
 
         private const float APEX_HORIZ_OFFSET = 28f;
         private const float APEX_VERT_OFFSET  = 55f;
-        private const float APEX_REACHED_DIST = 12f;
+        private const float APEX_REACHED_DIST = 16f;
 
-        private const float APEX_ACCEL        = 1.15f;
-        private const float APEX_MAX_SPEED    = 23f;
+        private const float APEX_ACCEL        = 2.6f;
+        private const float APEX_MAX_SPEED    = 34f;
 
-        private const float RISE_ACCEL        = 1.30f;
-        private const float RISE_MAX_SPEED    = 26f;
+        private const float RISE_ACCEL        = 2.9f;
+        private const float RISE_MAX_SPEED    = 39f;
         private const float RISE_BRAKE_DIST   = 50f;
-        private const float RISE_MIN_SPEED    = 14f;
-        private const float PERP_DAMP         = 0.92f;
+        private const float RISE_MIN_SPEED    = 21f;
+        private const float PERP_DAMP         = 0.9789f;
 
         private const float TRACK_ZONE        = 70f;
-        private const float TRACK_ACCEL       = 3.20f;
-        private const float TRACK_MAX_SPEED   = 48f;
+        private const float TRACK_ACCEL       = 18f;
+        private const float TRACK_MAX_SPEED   = 90f;
         private const float TRACK_BRAKE_DIST  = 32f;
         private const float TRACK_MIN_SPEED   = 14f;
         private const float CURSOR_LOCK_DIST  = 12f;
@@ -51,13 +56,35 @@ namespace JoJoStands.Projectiles
         private int     spawnTimer        = 0;
         private bool    inWallPhase       = false;
         private float   controlRange      = CONTROL_RANGE_T3;
+        private Vector2 prevCenter        = Vector2.Zero;
+
+        private bool pendingKill = false;
+        private int subStep = 0;
+
+        private const float DROP_X_OFFSET = 17f;
+        private const float DROP_Y_OFFSET = -21f;
+
+        private Projectile FindOwnerStand()
+        {
+            for (int i = 0; i < Main.maxProjectiles; i++)
+            {
+                Projectile sp = Main.projectile[i];
+                if (sp.active && sp.owner == Projectile.owner
+                    && (sp.type == ModContent.ProjectileType<NovemberRainStandT1>()
+                        || sp.type == ModContent.ProjectileType<NovemberRainStandT2>()
+                        || sp.type == ModContent.ProjectileType<NovemberRainStandT3>()
+                        || sp.type == ModContent.ProjectileType<NovemberRainStandFinal>()))
+                    return sp;
+            }
+            return null;
+        }
 
         private int GetSpawnGrowFrames(int standType)
         {
-            if (standType == ModContent.ProjectileType<NovemberRainStandT2>()) return 34;
-            if (standType == ModContent.ProjectileType<NovemberRainStandT3>()) return 26;
-            if (standType == ModContent.ProjectileType<NovemberRainStandFinal>()) return 20;
-            return DEFAULT_SPAWN_GROW_FRAMES;
+            if (standType == ModContent.ProjectileType<NovemberRainStandT2>()) return 28 * SUB_STEPS;
+            if (standType == ModContent.ProjectileType<NovemberRainStandT3>()) return 20 * SUB_STEPS;
+            if (standType == ModContent.ProjectileType<NovemberRainStandFinal>()) return 14 * SUB_STEPS;
+            return DEFAULT_SPAWN_GROW_FRAMES * SUB_STEPS;
         }
 
         private float GetControlRange(int standType)
@@ -74,9 +101,10 @@ namespace JoJoStands.Projectiles
             Projectile.friendly     = true;
             Projectile.hostile      = false;
             Projectile.penetrate    = 3;
-            Projectile.timeLeft     = 600;
+            Projectile.timeLeft     = DROP_TIME_LEFT * SUB_STEPS;
             Projectile.ignoreWater  = true;
-            Projectile.tileCollide  = false;
+            Projectile.tileCollide  = true;
+            Projectile.extraUpdates = SUB_STEPS - 1;
             Projectile.alpha        = 30;
             Projectile.netImportant = true;
         }
@@ -113,45 +141,28 @@ namespace JoJoStands.Projectiles
 
         public override void AI()
         {
+            if (pendingKill) { SplashDust(); Projectile.Kill(); return; }
+
             Player player = Main.player[Projectile.owner];
             if (!player.active || player.dead) { Projectile.Kill(); return; }
             MyPlayer mPlayer = player.GetModPlayer<MyPlayer>();
             if (!mPlayer.standOut) { Projectile.Kill(); return; }
+
+            prevCenter = Projectile.Center;
+            subStep++;
+            bool frameTick = (subStep % SUB_STEPS) == 0;
 
             if (firstFrame)
             {
                 Projectile.velocity = Vector2.Zero;
                 firstFrame = false;
 
-                int dirSign = player.direction;
-                Vector2 standPos = player.Center;
-                for (int i = 0; i < Main.maxProjectiles; i++)
+                Projectile stand = FindOwnerStand();
+                if (stand != null)
                 {
-                    Projectile sp = Main.projectile[i];
-                    if (sp.active && sp.owner == Projectile.owner
-                        && (sp.type == ModContent.ProjectileType<NovemberRainStandT1>()
-                            || sp.type == ModContent.ProjectileType<NovemberRainStandT2>()
-                            || sp.type == ModContent.ProjectileType<NovemberRainStandT3>()
-                            || sp.type == ModContent.ProjectileType<NovemberRainStandFinal>()))
-                    {
-                        standPos = sp.Center;
-                        dirSign = sp.spriteDirection;
-                        Projectile.spriteDirection = sp.spriteDirection;
-                        Projectile.direction = sp.spriteDirection;
-                        spawnGrowFrames = GetSpawnGrowFrames(sp.type);
-                        controlRange = GetControlRange(sp.type);
-                        break;
-                    }
+                    spawnGrowFrames = GetSpawnGrowFrames(stand.type);
+                    controlRange = GetControlRange(stand.type);
                 }
-
-                const float DROP_X_OFFSET = 17f;
-                const float DROP_Y_OFFSET = -21f;
-                Vector2 forcedSpawn = new Vector2(
-                    standPos.X + DROP_X_OFFSET * dirSign,
-                    standPos.Y + DROP_Y_OFFSET);
-
-                Projectile.Center = forcedSpawn;
-                spawnPos = forcedSpawn;
 
                 if (Projectile.owner == Main.myPlayer)
                 {
@@ -174,41 +185,32 @@ namespace JoJoStands.Projectiles
             {
                 spawnTimer++;
 
-                const float DROP_X_OFFSET = 17f;
-                const float DROP_Y_OFFSET = -21f;
-                int dirSign2 = player.direction;
-                Vector2 standPos2 = player.Center;
-                for (int i = 0; i < Main.maxProjectiles; i++)
+                Projectile stand = FindOwnerStand();
+                int dirSign = player.direction;
+                Vector2 standPos = player.Center;
+                if (stand != null)
                 {
-                    Projectile sp = Main.projectile[i];
-                    if (sp.active && sp.owner == Projectile.owner
-                        && (sp.type == ModContent.ProjectileType<NovemberRainStandT1>()
-                            || sp.type == ModContent.ProjectileType<NovemberRainStandT2>()
-                            || sp.type == ModContent.ProjectileType<NovemberRainStandT3>()
-                            || sp.type == ModContent.ProjectileType<NovemberRainStandFinal>()))
-                    {
-                        standPos2 = sp.Center;
-                        dirSign2 = sp.spriteDirection;
-                        Projectile.spriteDirection = sp.spriteDirection;
-                        Projectile.direction = sp.spriteDirection;
-                        break;
-                    }
+                    standPos = stand.Center;
+                    dirSign = stand.spriteDirection;
+                    Projectile.spriteDirection = stand.spriteDirection;
+                    Projectile.direction = stand.spriteDirection;
                 }
                 spawnPos = new Vector2(
-                    standPos2.X + DROP_X_OFFSET * dirSign2,
-                    standPos2.Y + DROP_Y_OFFSET);
+                    standPos.X + DROP_X_OFFSET * dirSign,
+                    standPos.Y + DROP_Y_OFFSET);
 
                 Projectile.Center = spawnPos;
                 Projectile.velocity = Vector2.Zero;
+                prevCenter = Projectile.Center;
 
-                if (Main.rand.NextBool(3))
+                if (frameTick && Main.rand.NextBool(3))
                 {
                     int d = Dust.NewDust(Projectile.position, Projectile.width, Projectile.height,
                         DustID.Water, 0f, 0f, 100, default, Main.rand.NextFloat(0.6f, 1.0f));
                     Main.dust[d].noGravity = true;
                     Main.dust[d].velocity *= 0.3f;
                 }
-                Lighting.AddLight(Projectile.Center, 0.0f, 0.1f, 0.2f);
+                if (frameTick) Lighting.AddLight(Projectile.Center, 0.05f, 0.10f, 0.18f);
 
                 if (Projectile.owner == Main.myPlayer)
                     wasMouseRight = Main.mouseRight;
@@ -222,6 +224,7 @@ namespace JoJoStands.Projectiles
 
             Projectile.tileCollide = !inWallPhase;
 
+
             if (Projectile.owner == Main.myPlayer && Projectile.ai[0] < 1f)
             {
                 if (wasMouseRight && !Main.mouseRight)
@@ -233,6 +236,7 @@ namespace JoJoStands.Projectiles
             }
 
             bool released = Projectile.ai[0] >= 1f;
+            if (!released) Projectile.timeLeft = DROP_TIME_LEFT * SUB_STEPS;
 
             if (Projectile.owner == Main.myPlayer)
             {
@@ -244,7 +248,7 @@ namespace JoJoStands.Projectiles
                     if (!inRange)
                     {
                         Projectile.ai[0] = 1f;
-                        Projectile.velocity.Y += FREE_GRAVITY;
+                        Projectile.velocity.Y += FREE_GRAVITY * STEP_SCALE2;
                         Projectile.netUpdate = true;
                     }
                     else if (Main.mouseRight)
@@ -271,13 +275,13 @@ namespace JoJoStands.Projectiles
                                 float along = Vector2.Dot(Projectile.velocity, dir);
                                 float side  = Vector2.Dot(Projectile.velocity, perp);
 
-                                along += TRACK_ACCEL;
+                                along += TRACK_ACCEL * STEP_SCALE2;
 
-                                float speedCap = TRACK_MAX_SPEED;
+                                float speedCap = TRACK_MAX_SPEED * STEP_SCALE;
                                 if (dist < TRACK_BRAKE_DIST)
-                                    speedCap = MathHelper.Lerp(TRACK_MIN_SPEED, TRACK_MAX_SPEED, dist / TRACK_BRAKE_DIST);
+                                    speedCap = MathHelper.Lerp(TRACK_MIN_SPEED * STEP_SCALE, TRACK_MAX_SPEED * STEP_SCALE, dist / TRACK_BRAKE_DIST);
                                 if (along > speedCap) along = speedCap;
-                                if (along < -TRACK_MAX_SPEED * 0.4f) along = -TRACK_MAX_SPEED * 0.4f;
+                                if (along < -TRACK_MAX_SPEED * STEP_SCALE * 0.4f) along = -TRACK_MAX_SPEED * STEP_SCALE * 0.4f;
 
                                 if (along > 0f && along > dist)
                                     along = dist;
@@ -320,10 +324,10 @@ namespace JoJoStands.Projectiles
                                 else
                                 {
                                     Vector2 apexDir = toApex / apexDist;
-                                    Projectile.velocity += apexDir * APEX_ACCEL;
+                                    Projectile.velocity += apexDir * (APEX_ACCEL * STEP_SCALE2);
                                     float spd = Projectile.velocity.Length();
-                                    if (spd > APEX_MAX_SPEED)
-                                        Projectile.velocity = (Projectile.velocity / spd) * APEX_MAX_SPEED;
+                                    if (spd > APEX_MAX_SPEED * STEP_SCALE)
+                                        Projectile.velocity = (Projectile.velocity / spd) * (APEX_MAX_SPEED * STEP_SCALE);
                                 }
                             }
                             else if (dist > 0.5f)
@@ -334,13 +338,13 @@ namespace JoJoStands.Projectiles
                                 float along = Vector2.Dot(Projectile.velocity, dir);
                                 float side  = Vector2.Dot(Projectile.velocity, perp);
 
-                                along += RISE_ACCEL;
+                                along += RISE_ACCEL * STEP_SCALE2;
 
-                                float speedCap = RISE_MAX_SPEED;
+                                float speedCap = RISE_MAX_SPEED * STEP_SCALE;
                                 if (dist < RISE_BRAKE_DIST)
-                                    speedCap = MathHelper.Lerp(RISE_MIN_SPEED, RISE_MAX_SPEED, dist / RISE_BRAKE_DIST);
+                                    speedCap = MathHelper.Lerp(RISE_MIN_SPEED * STEP_SCALE, RISE_MAX_SPEED * STEP_SCALE, dist / RISE_BRAKE_DIST);
                                 if (along > speedCap)  along = speedCap;
-                                if (along < -RISE_MAX_SPEED * 0.5f)  along = -RISE_MAX_SPEED * 0.5f;
+                                if (along < -RISE_MAX_SPEED * STEP_SCALE * 0.5f)  along = -RISE_MAX_SPEED * STEP_SCALE * 0.5f;
 
                                 side *= PERP_DAMP;
 
@@ -351,20 +355,20 @@ namespace JoJoStands.Projectiles
                     }
                     else
                     {
-                        Projectile.velocity.Y += FREE_GRAVITY;
+                        Projectile.velocity.Y += FREE_GRAVITY * STEP_SCALE2;
                         Projectile.netUpdate = true;
                     }
                 }
                 else
                 {
-                    Projectile.velocity.Y += FREE_GRAVITY;
+                    Projectile.velocity.Y += FREE_GRAVITY * STEP_SCALE2;
                     Projectile.netUpdate = true;
                 }
             }
             else
             {
-                Projectile.velocity.Y += FREE_GRAVITY;
-                if (Projectile.velocity.Y > 13f) Projectile.velocity.Y = 13f;
+                Projectile.velocity.Y += FREE_GRAVITY * STEP_SCALE2;
+                if (Projectile.velocity.Y > 13f * STEP_SCALE) Projectile.velocity.Y = 13f * STEP_SCALE;
             }
 
             if (Projectile.velocity.LengthSquared() > 0.5f)
@@ -375,14 +379,14 @@ namespace JoJoStands.Projectiles
             else
                 Projectile.rotation = MathHelper.Lerp(Projectile.rotation, 0f, 0.15f);
 
-            if (Main.rand.NextBool(2))
+            if (frameTick && Main.rand.NextBool(2))
             {
                 int d = Dust.NewDust(Projectile.position, Projectile.width, Projectile.height,
                     DustID.Water, Projectile.velocity.X * 0.12f, Projectile.velocity.Y * 0.12f,
                     100, default, Main.rand.NextFloat(0.85f, 1.25f));
                 Main.dust[d].noGravity = true;
             }
-            Lighting.AddLight(Projectile.Center, 0.0f, 0.1f, 0.2f);
+            if (frameTick) Lighting.AddLight(Projectile.Center, 0.0f, 0.1f, 0.2f);
         }
 
         public override bool PreDraw(ref Color lightColor)
@@ -390,17 +394,18 @@ namespace JoJoStands.Projectiles
             Texture2D tex   = Terraria.GameContent.TextureAssets.Projectile[Projectile.type].Value;
             Vector2   origin = new Vector2(tex.Width * 0.5f, tex.Height * 0.5f);
             Vector2   pos    = Projectile.Center - Main.screenPosition;
+            Color glowColor = new Color(220, 240, 255, 240);
 
             if (spawnTimer < spawnGrowFrames)
             {
                 float t     = (float)spawnTimer / spawnGrowFrames;
                 float scale = 1f - (1f - t) * (1f - t);
-                Main.EntitySpriteDraw(tex, pos, null, lightColor * t, Projectile.rotation,
+                Main.EntitySpriteDraw(tex, pos, null, glowColor * t, Projectile.rotation,
                     origin, scale, SpriteEffects.None, 0);
             }
             else
             {
-                Main.EntitySpriteDraw(tex, pos, null, lightColor, Projectile.rotation,
+                Main.EntitySpriteDraw(tex, pos, null, glowColor, Projectile.rotation,
                     origin, 1f, SpriteEffects.None, 0);
             }
             return false;
@@ -430,15 +435,26 @@ namespace JoJoStands.Projectiles
 
         public override bool OnTileCollide(Vector2 oldVelocity)
         {
-            bool activeControl = reachedCursorZone && Projectile.ai[0] < 1f;
-            bool floorHit      = Math.Abs(oldVelocity.Y) > Math.Abs(oldVelocity.X);
-
-            if (!activeControl || !floorHit)
-            {
-                SplashDust();
-                Projectile.Kill();
-            }
+            pendingKill = true;
             return false;
         }
+
+        public override bool? Colliding(Rectangle projHitbox, Rectangle targetHitbox)
+        {
+            if (projHitbox.Intersects(targetHitbox)) return true;
+            if (prevCenter != Vector2.Zero)
+            {
+                float collisionPoint = 0f;
+                if (Collision.CheckAABBvLineCollision(
+                    new Vector2(targetHitbox.X, targetHitbox.Y),
+                    new Vector2(targetHitbox.Width, targetHitbox.Height),
+                    prevCenter, Projectile.Center,
+                    Math.Max(Projectile.width, Projectile.height) * 0.5f,
+                    ref collisionPoint))
+                    return true;
+            }
+            return null;
+        }
+
     }
 }

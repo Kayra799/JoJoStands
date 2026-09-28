@@ -12,7 +12,7 @@ namespace JoJoStands.Items
         public override int StandType => 2;
         public override string StandIdentifierName => "NovemberRain";
         public override int StandTier => 3;
-        public override Color StandTierDisplayColor => Color.SkyBlue;
+        public override Color StandTierDisplayColor => Color.MidnightBlue;
 
         public override string Texture => Mod.Name + "/Items/NovemberRainT1";
 

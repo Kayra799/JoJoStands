@@ -14,7 +14,6 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected override float RAIN_UP => 260f + Main.player[Projectile.owner].GetModPlayer<MyPlayer>().standRangeBoosts * 0.4f;
         protected override float RAIN_SLOW => 0.60f;
         protected override int HIT_INTERVAL => 20;
-        protected override int PRECISE_CD => 7;
         protected override int TRAP_SPAWN_TICKS => 300;
         protected override int TRAP_BASE_TICKS => 600;
         protected override int TRAP_MAX_TICKS => 900;
@@ -26,6 +25,9 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
 
         public override void AI()
         {
+            if (!summonAnimDone)
+                currentAnimationState = AnimationState.Summon;
+
             SelectAnimation();
             UpdateStandInfo();
             UpdateStandSync();
@@ -42,6 +44,9 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             ApplyStuns();
             UpdateTraps(mPlayer, player);
             CheckTrapTriggers(mPlayer);
+
+            if (!summonAnimDone)
+                return;
 
             if (mPlayer.standControlStyle == MyPlayer.StandControlStyle.Auto)
             {

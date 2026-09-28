@@ -17,7 +17,6 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
         protected override float RAIN_UP => 260f + Main.player[Projectile.owner].GetModPlayer<MyPlayer>().standRangeBoosts * 0.4f;
         protected override float RAIN_SLOW => 0.55f;
         protected override int HIT_INTERVAL => 18;
-        protected override int PRECISE_CD => 6;
         protected override int TRAP_SPAWN_TICKS => 180;
         protected override int TRAP_BASE_TICKS => 720;
         protected override int TRAP_MAX_TICKS => 1200;
@@ -33,6 +32,9 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
 
         public override void AI()
         {
+            if (!summonAnimDone)
+                currentAnimationState = AnimationState.Summon;
+
             SelectAnimation();
             UpdateStandInfo();
             UpdateStandSync();
@@ -49,6 +51,9 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             ApplyStuns();
             UpdateTraps(mPlayer, player);
             CheckTrapTriggers(mPlayer);
+
+            if (!summonAnimDone)
+                return;
 
             if (barrierActive)
             {
@@ -112,6 +117,22 @@ namespace JoJoStands.Projectiles.PlayerStands.NovemberRain
             }
 
             if (mPlayer.posing) currentAnimationState = AnimationState.Pose;
+        }
+
+        public override void OnKill(int timeLeft)
+        {
+            base.OnKill(timeLeft);
+
+            if (barrierActive)
+            {
+                Player player = Main.player[Projectile.owner];
+                MyPlayer mPlayer = player.GetModPlayer<MyPlayer>();
+                if (barrierProjIdx >= 0 && barrierProjIdx < Main.maxProjectiles)
+                    Main.projectile[barrierProjIdx].Kill();
+                barrierActive = false; barrierTimer = 0;
+                player.ClearBuff(ModContent.BuffType<RainBarrierActive>());
+                player.AddBuff(ModContent.BuffType<AbilityCooldown>(), mPlayer.AbilityCooldownTime(BARRIER_CD_SECS));
+            }
         }
     }
 }

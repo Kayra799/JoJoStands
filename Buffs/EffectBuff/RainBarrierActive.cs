@@ -11,7 +11,7 @@ namespace JoJoStands.Buffs.EffectBuff
         public override void SetStaticDefaults()
         {
             Main.persistentBuff[Type] = true;
-            Main.debuff[Type] = false;
+            Main.debuff[Type] = true;
             BuffID.Sets.NurseCannotRemoveDebuff[Type] = true;
         }
     }
